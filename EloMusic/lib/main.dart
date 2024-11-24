@@ -1,105 +1,114 @@
-import 'package:english_words/english_words.dart';
+import 'package:audio_video_progress_bar/audio_video_progress_bar.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'notifiers/play_button_notifier.dart';
+import 'notifiers/progress_notifier.dart';
+import 'notifiers/repeat_button_notifier.dart';
+import 'page_manager.dart';
+import 'services/service_locator.dart';
 
-void main() {
-  runApp(MyApp());
+void main() async {
+  await setupServiceLocator();
+  runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget { //sets up the app
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
   @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  @override
+  void initState() {
+    super.initState();
+    getIt<PageManager>().init();
+  }
+
+  @override
+  void dispose() {
+    getIt<PageManager>().dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider( //This widget cotains a ChangeNotifierProvider
-      create: (context) => MyAppState(),
-      child: MaterialApp(
-        title: 'EloMusic',
-        theme: ThemeData(
-          useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(seedColor: Color.fromRGBO(200, 200, 200, 1) ),
+    return MaterialApp(
+      home: Scaffold(
+        body: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            children: const [
+              CurrentSongTitle(),
+              Playlist(),
+              AddRemoveSongButtons(),
+              AudioProgressBar(),
+              AudioControlButtons(),
+            ],
+          ),
         ),
-        home: MyHomePage(),
       ),
     );
   }
 }
 
-class MyAppState extends ChangeNotifier { //can notify others
-  var current = WordPair.random();
-  void getNext() {
-    current = WordPair.random();
-    notifyListeners();
-  }
-  var favorites = <WordPair>[]; //only contains word pairs
-
-  void toggleFavorite() {
-    if (favorites.contains(current)) {
-      favorites.remove(current);
-    } else {
-      favorites.add(current);
-    }
-    notifyListeners();
-  }
-
-
-}
-
-class MyHomePage extends StatefulWidget {
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-
-
-  var selectedIndex = 0;
-
+class CurrentSongTitle extends StatelessWidget {
+  const CurrentSongTitle({Key? key}) : super(key: key);
   @override
   Widget build(BuildContext context) {
+    final pageManager = getIt<PageManager>();
+    return ValueListenableBuilder<String>(
+      valueListenable: pageManager.currentSongTitleNotifier,
+      builder: (_, title, __) {
+        return Padding(
+          padding: const EdgeInsets.only(top: 8.0),
+          child: Text(title, style: const TextStyle(fontSize: 40)),
+        );
+      },
+    );
+  }
+}
 
-    Widget page;
-    switch (selectedIndex) {
-      case 0:
-        page = GeneratorPage();
-        break;
-      case 1:
-        page = NewPage();
-        break;
-      default:
-        throw UnimplementedError('no widget for $selectedIndex');
-    }
+class Playlist extends StatelessWidget {
+  const Playlist({Key? key}) : super(key: key);
+  @override
+  Widget build(BuildContext context) {
+    final pageManager = getIt<PageManager>();
+    return Expanded(
+      child: ValueListenableBuilder<List<String>>(
+        valueListenable: pageManager.playlistNotifier,
+        builder: (context, playlistTitles, _) {
+          return ListView.builder(
+            itemCount: playlistTitles.length,
+            itemBuilder: (context, index) {
+              return ListTile(
+                title: Text(playlistTitles[index]),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
 
-
-    return Scaffold(
-      body: Row(
+class AddRemoveSongButtons extends StatelessWidget {
+  const AddRemoveSongButtons({Key? key}) : super(key: key);
+  @override
+  Widget build(BuildContext context) {
+    final pageManager = getIt<PageManager>();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          SafeArea( //for phone mostly. Navigation not on status bar of phone
-            child: NavigationRail(
-              extended: false,
-              destinations: [
-                NavigationRailDestination(
-                  icon: Icon(Icons.home),
-                  label: Text('Home'),
-                ),
-                NavigationRailDestination(
-                  icon: Icon(Icons.favorite),
-                  label: Text('Favorites'),
-                ),
-              ],
-              selectedIndex: selectedIndex, //kept track of
-              onDestinationSelected: (value) {
-                setState(() {
-                  selectedIndex = value;
-                });
-              },
-            ),
+          FloatingActionButton(
+            onPressed: pageManager.add,
+            child: const Icon(Icons.add),
           ),
-          Expanded( //Give me as much space as possible
-            child: Container(
-              color: Theme.of(context).colorScheme.primaryContainer,
-              child: page,
-            ),
+          FloatingActionButton(
+            onPressed: pageManager.remove,
+            child: const Icon(Icons.remove),
           ),
         ],
       ),
@@ -107,97 +116,157 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 }
 
-
-class GeneratorPage extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) { //build() ==> called everytime it's changed
-    var appState = context.watch<MyAppState>(); //watches the app state, rebuild everytime it changes
-    var word = appState.current;
-    IconData icon;
-    if (appState.favorites.contains(word)) {
-      icon = Icons.favorite;
-    } else {
-      icon = Icons.favorite_border;
-    }
-
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-
-          children: [
-            Text('A random idea: YOU ARE DUMB'),
-            SizedBox(height: 10,),
-            BigCard(word: word),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ElevatedButton(
-                  onPressed: () {
-                    appState.getNext();  // ← This instead of print().
-                  },
-                  child: Text('Next'),
-                ),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    appState.toggleFavorite();  // ← This instead of print().
-                  },
-                  label: Text('Like'),
-                  icon: Icon(icon),
-                ),
-
-              ],
-            ),
-          ],
-        ),
-
-      );
-
-  }
-}
-
-class NewPage extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) { //build() ==> called everytime it's changed
-    var appState = context.watch<MyAppState>(); //watches the app state, rebuild everytime it changes
-
-      return Center(
-        child: ListView(
-
-          children: [
-            Text('Favorites'),
-            for (var favorite in appState.favorites)
-              ListTile( leading: Text("hey"), title: Text(favorite.asString), ),
-          ],
-        ),
-      );
-
-
-
-  }
-
-}
-
-class BigCard extends StatelessWidget {
-  const BigCard({
-    super.key,
-    required this.word,
-  });
-
-  final WordPair word;
-
+class AudioProgressBar extends StatelessWidget {
+  const AudioProgressBar({Key? key}) : super(key: key);
   @override
   Widget build(BuildContext context) {
-    var theme = Theme.of(context);
-    var style = theme.textTheme.displayMedium!.copyWith( //Automatically selects a good color?
-      color: theme.colorScheme.onPrimary,
+    final pageManager = getIt<PageManager>();
+    return ValueListenableBuilder<ProgressBarState>(
+      valueListenable: pageManager.progressNotifier,
+      builder: (_, value, __) {
+        return ProgressBar(
+          progress: value.current,
+          buffered: value.buffered,
+          total: value.total,
+          onSeek: pageManager.seek,
+        );
+      },
     );
+  }
+}
 
-    return Card(
-      color: theme.colorScheme.primary,
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Text(word.asLowerCase, style: style, semanticsLabel: word.asCamelCase,),
+class AudioControlButtons extends StatelessWidget {
+  const AudioControlButtons({Key? key}) : super(key: key);
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 60,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: const [
+          RepeatButton(),
+          PreviousSongButton(),
+          PlayButton(),
+          NextSongButton(),
+          ShuffleButton(),
+        ],
       ),
+    );
+  }
+}
+
+class RepeatButton extends StatelessWidget {
+  const RepeatButton({Key? key}) : super(key: key);
+  @override
+  Widget build(BuildContext context) {
+    final pageManager = getIt<PageManager>();
+    return ValueListenableBuilder<RepeatState>(
+      valueListenable: pageManager.repeatButtonNotifier,
+      builder: (context, value, child) {
+        Icon icon;
+        switch (value) {
+          case RepeatState.off:
+            icon = const Icon(Icons.repeat, color: Colors.grey);
+            break;
+          case RepeatState.repeatSong:
+            icon = const Icon(Icons.repeat_one);
+            break;
+          case RepeatState.repeatPlaylist:
+            icon = const Icon(Icons.repeat);
+            break;
+        }
+        return IconButton(
+          icon: icon,
+          onPressed: pageManager.repeat,
+        );
+      },
+    );
+  }
+}
+
+class PreviousSongButton extends StatelessWidget {
+  const PreviousSongButton({Key? key}) : super(key: key);
+  @override
+  Widget build(BuildContext context) {
+    final pageManager = getIt<PageManager>();
+    return ValueListenableBuilder<bool>(
+      valueListenable: pageManager.isFirstSongNotifier,
+      builder: (_, isFirst, __) {
+        return IconButton(
+          icon: const Icon(Icons.skip_previous),
+          onPressed: (isFirst) ? null : pageManager.previous,
+        );
+      },
+    );
+  }
+}
+
+class PlayButton extends StatelessWidget {
+  const PlayButton({Key? key}) : super(key: key);
+  @override
+  Widget build(BuildContext context) {
+    final pageManager = getIt<PageManager>();
+    return ValueListenableBuilder<ButtonState>(
+      valueListenable: pageManager.playButtonNotifier,
+      builder: (_, value, __) {
+        switch (value) {
+          case ButtonState.loading:
+            return Container(
+              margin: const EdgeInsets.all(8.0),
+              width: 32.0,
+              height: 32.0,
+              child: const CircularProgressIndicator(),
+            );
+          case ButtonState.paused:
+            return IconButton(
+              icon: const Icon(Icons.play_arrow),
+              iconSize: 32.0,
+              onPressed: pageManager.play,
+            );
+          case ButtonState.playing:
+            return IconButton(
+              icon: const Icon(Icons.pause),
+              iconSize: 32.0,
+              onPressed: pageManager.pause,
+            );
+        }
+      },
+    );
+  }
+}
+
+class NextSongButton extends StatelessWidget {
+  const NextSongButton({Key? key}) : super(key: key);
+  @override
+  Widget build(BuildContext context) {
+    final pageManager = getIt<PageManager>();
+    return ValueListenableBuilder<bool>(
+      valueListenable: pageManager.isLastSongNotifier,
+      builder: (_, isLast, __) {
+        return IconButton(
+          icon: const Icon(Icons.skip_next),
+          onPressed: (isLast) ? null : pageManager.next,
+        );
+      },
+    );
+  }
+}
+
+class ShuffleButton extends StatelessWidget {
+  const ShuffleButton({Key? key}) : super(key: key);
+  @override
+  Widget build(BuildContext context) {
+    final pageManager = getIt<PageManager>();
+    return ValueListenableBuilder<bool>(
+      valueListenable: pageManager.isShuffleModeEnabledNotifier,
+      builder: (context, isEnabled, child) {
+        return IconButton(
+          icon: (isEnabled)
+              ? const Icon(Icons.shuffle)
+              : const Icon(Icons.shuffle, color: Colors.grey),
+          onPressed: pageManager.shuffle,
+        );
+      },
     );
   }
 }
